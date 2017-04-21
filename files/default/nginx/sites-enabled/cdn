@@ -1,0 +1,84 @@
+server {
+    listen 80;
+    server_name cdn.faithful-to-nature.co.za;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 http2 ssl;
+#include /etc/nginx.listen/listen;
+    include cdnssl.conf;
+    server_tokens off;
+    # proxy_cache page;
+    server_name cdn.faithful-to-nature.co.za;
+    root /var/www/ftn/current;
+
+	more_set_headers 'Server: FTN-WEB';
+    add_header X-Backend-Server $hostname;
+    pagespeed on;
+    #pagespeed RedisServer "172.16.55.7:6379";
+    #pagespeed MemcachedServers "web1:11211,web2:11211,web3:11211,web4:11211";
+    pagespeed MemcachedServers "localhost:11211";
+    pagespeed FileCachePath /var/cache/ngx_pagespeed_cache;
+    pagespeed Domain newftn.faithful-to-nature.co.za;
+    pagespeed EnableFilters rewrite_images;
+    pagespeed EnableFilters rewrite_css;
+    pagespeed EnableFilters rewrite_javascript;
+    pagespeed EnableFilters combine_css;
+    pagespeed EnableFilters combine_javascript;
+    pagespeed EnableFilters collapse_whitespace;
+    pagespeed FetchHttps enable,allow_unknown_certificate_authority,allow_certificate_not_yet_valid;
+    pagespeed RespectXForwardedProto on;
+    # set a nice expire for assets
+    location ~* "^.+\.(jpe?g|gif|css|png|js|ico|pdf|zip|tar|t?gz|mp3|wav|swf|woff|woff2|ttf)$" {
+        access_log off;
+        expires    max;
+        add_header Cache-Control public;
+        fastcgi_hide_header Set-Cookie;
+add_header 'Access-Control-Allow-Origin' '*';
+    }
+
+    location ~ "\.pagespeed\.([a-z]\.)?[a-z]{2}\.[^.]{10}\.[^.]+" {
+        add_header "" "";
+    }
+
+    location ~ "^/pagespeed_static/" { }
+
+    location ~ "^/ngx_pagespeed_beacon$" { }
+    location / {
+        index index.html index.php; ## Allow a static html file to be shown first
+        try_files $uri $uri/ @handler; ## If missing pass the URI to Magento's front handler
+        expires 30d; ## Assume all files are cachable
+    }
+        location /nginx_status {
+          stub_status on;
+          access_log   off;
+          allow 5.135.78.0;
+          allow 127.0.0.1;
+          deny all;
+        }
+
+    ## These locations would be hidden by .htaccess normally
+    location ^~ /app/                { deny all; }
+    location ^~ /includes/           { deny all; }
+    location ^~ /lib/                { deny all; }
+    location ^~ /media/downloadable/ { deny all; }
+    location ^~ /pkginfo/            { deny all; }
+    location ^~ /report/config.xml   { deny all; }
+    location ^~ /var/                { deny all; }
+
+    location /var/export/ { ## Allow admins only to view export folder
+        auth_basic           "Restricted"; ## Message shown in login window
+        auth_basic_user_file htpasswd; ## See /etc/nginx/htpassword
+        autoindex            on;
+    }
+
+    location  /. { ## Disable .htaccess and other hidden files
+        return 404;
+    }
+
+    access_log /var/log/nginx/cdn.access.log es;
+    error_log /var/log/nginx/cdn.error.log;
+#error_log syslog:server=man:514,facility=local7,tag=nginx,severity=error;
+#access_log syslog:server=man:514,facility=local7,tag=nginx,severity=info es if=$log_ua;
+}

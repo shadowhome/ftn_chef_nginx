@@ -1,0 +1,191 @@
+server {
+    listen 80;
+    server_name www.faithful-to-nature.co.za faithful-to-nature.co.za newftn.faithful-to-nature.co.za;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 http2 ssl;
+#include /etc/nginx.listen/listen;
+    include ssl.conf;
+    server_tokens off;
+    # proxy_cache page;
+    server_name faithful-to-nature.co.za www.faithful-to-nature.co.za newftn.faithful-to-nature.co.za;
+    root /var/www/ftn/current;
+
+	more_set_headers 'Server: FTN-WEB';
+    add_header X-Backend-Server $hostname;
+    pagespeed on;
+    #pagespeed RedisServer "172.16.55.7:6379";
+    #pagespeed MemcachedServers "web1:11211,web2:11211,web3:11211,web4:11211";
+    pagespeed MemcachedServers "web5:11211,web6:11211";
+    pagespeed FileCachePath /var/cache/ngx_pagespeed_cache;
+    pagespeed Domain www.faithful-to-nature.co.za;
+    pagespeed Domain faithful-to-nature.co.za;
+    pagespeed Domain newftn.faithful-to-nature.co.za;
+    pagespeed EnableFilters rewrite_images;
+    pagespeed EnableFilters rewrite_css;
+    pagespeed EnableFilters rewrite_javascript;
+    pagespeed EnableFilters combine_css;
+    pagespeed EnableFilters combine_javascript;
+    pagespeed EnableFilters collapse_whitespace;
+    pagespeed FetchHttps enable,allow_unknown_certificate_authority,allow_certificate_not_yet_valid;
+    pagespeed RespectXForwardedProto on;
+    # set a nice expire for assets
+    location ~* "^.+\.(jpe?g|gif|css|png|js|ico|pdf|zip|tar|t?gz|mp3|wav|swf|woff|woff2|ttf)$" {
+        access_log off;
+        expires    max;
+        add_header Cache-Control public;
+        fastcgi_hide_header Set-Cookie;
+add_header 'Access-Control-Allow-Origin' '*';
+    }
+
+    location ~ "\.pagespeed\.([a-z]\.)?[a-z]{2}\.[^.]{10}\.[^.]+" {
+        add_header "" "";
+    }
+
+    location ~ "^/pagespeed_static/" { }
+
+    location ~ "^/ngx_pagespeed_beacon$" { }
+    location / {
+        index index.html index.php; ## Allow a static html file to be shown first
+        try_files $uri $uri/ @handler; ## If missing pass the URI to Magento's front handler
+        expires 30d; ## Assume all files are cachable
+    }
+        location /nginx_status {
+          stub_status on;
+          access_log   off;
+          allow 5.135.78.0;
+          allow 127.0.0.1;
+          deny all;
+        }
+
+location ^~ /natural-organic-blog {
+        root /var/www/ftn/current;
+        index index.php;
+        try_files $uri $uri/ /natural-organic-blog/index.php;
+
+        location ~ \.php {
+            fastcgi_split_path_info ^(.*\.php)(.*)$;
+        fastcgi_pass   fpm7_backend;
+        fastcgi_read_timeout 150;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_param PATH_INFO $fastcgi_path_info;
+            fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
+
+        fastcgi_param  HTTPS $fastcgi_https;
+        fastcgi_param  HTTPS on;
+        include        fastcgi_params; ## See /etc/nginx/fastcgi_params
+        }
+    }
+
+#location /smartedge/stock/ {
+#        fastcgi_pass fpm7_backend;
+#        fastcgi_connect_timeout 300;
+#        fastcgi_send_timeout 300;
+#        fastcgi_read_timeout 300;
+##	fastcgi_param PHP_VALUE "max_execution_time=600";
+#fastcgi_param  PHP_VALUE "memory_limit=768M \n max_execution_time=$timeout_range";
+#
+#}
+#        set $timeout_range "30";
+#        if ($request_uri ~* ^/smartedge(.+)){
+#            set $timeout_range "18000";
+#        }
+
+
+
+location ^~ /skin1 {
+proxy_pass https://old.faithful-to-nature.co.za/skin1/;
+}
+location ^~ /skin2 {
+proxy_pass https://old.faithful-to-nature.co.za/skin2/;
+}
+location ^~ /images {
+proxy_pass https://old.faithful-to-nature.co.za/images/;
+}
+
+
+
+    location /api/ {
+
+        auth_basic "off";
+
+        index index.html index.php; ## Allow a static html file to be shown first
+        try_files $uri $uri/ @handler; ## If missing pass the URI to Magento's front handler
+        expires 30d; ## Assume all files are cachable
+    }
+
+    ## These locations would be hidden by .htaccess normally
+    location ^~ /app/                { deny all; }
+    location ^~ /includes/           { deny all; }
+    location ^~ /lib/                { deny all; }
+    location ^~ /media/downloadable/ { deny all; }
+    location ^~ /pkginfo/            { deny all; }
+    location ^~ /report/config.xml   { deny all; }
+    location ^~ /var/                { deny all; }
+
+    location /var/export/ { ## Allow admins only to view export folder
+        auth_basic           "Restricted"; ## Message shown in login window
+        auth_basic_user_file htpasswd; ## See /etc/nginx/htpassword
+        autoindex            on;
+    }
+
+    location  /. { ## Disable .htaccess and other hidden files
+        return 404;
+    }
+
+    location @handler { ## Magento uses a common front handler
+        rewrite / /index.php?$1 last;
+    }
+
+    location ~ .php/ { ## Forward paths like /js/index.php/x.js to relevant handler
+        rewrite ^(.*.php)/ $1 last;
+    }
+
+    location ~ wsdl$ {
+        gzip off;
+        gzip_vary off;
+        keepalive_timeout 0;
+        fastcgi_pass fpm7_backend;
+        fastcgi_connect_timeout 300;
+        fastcgi_send_timeout 300;
+        fastcgi_read_timeout 300;
+        fastcgi_buffers 8 16k;
+        fastcgi_buffer_size 32k;
+        #pagespeed on;
+    }
+
+    location ~ .php$ { ## Execute PHP scripts
+        if (!-e $request_filename) { rewrite / /index.php last; }
+        expires        off; ## Do not cache dynamic content
+        set $timeout_range "30";
+        if ($request_uri ~* ^/smartedge(.+)){
+            set $timeout_range "18000";
+        }
+        if ($request_uri ~* /admin_e22p(.+)){
+            set $timeout_range "120";
+        }
+        if ($request_uri ~* /BackgroundTask(.+)){
+            set $timeout_range "300";
+        }
+        if ($request_uri ~* /OrderPreparation(.+)){
+            set $timeout_range "300";
+        }
+        fastcgi_pass   fpm7_backend;
+	fastcgi_read_timeout 150;
+        fastcgi_param  HTTPS $fastcgi_https;
+        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+        fastcgi_param  MAGE_RUN_CODE default; ## Store code is defined in administration > Configuration > Manage Stores
+        fastcgi_param  MAGE_RUN_TYPE store;
+	fastcgi_param  HTTPS on;
+       	#fastcgi_param MAGE_IS_DEVELOPER_MODE true;
+        fastcgi_param  PHP_VALUE "memory_limit=768M \n max_execution_time=$timeout_range";
+        include        fastcgi_params; ## See /etc/nginx/fastcgi_params
+    }
+
+    access_log /var/log/nginx/ftn.access.log main_ext;
+    error_log /var/log/nginx/ftn.error.log warn;
+#error_log syslog:server=man:514,facility=local7,tag=nginx,severity=error;
+#access_log syslog:server=man:514,facility=local7,tag=nginx,severity=info es if=$log_ua;
+}
