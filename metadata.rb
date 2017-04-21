@@ -1,6 +1,6 @@
 name 'webnodes'
-maintainer 'The Authors'
-maintainer_email 'you@example.com'
+maintainer 'B Geach'
+maintainer_email 'bgeach@ur-sltn.com'
 license 'All Rights Reserved'
 description 'Installs/Configures webnodes'
 long_description 'Installs/Configures webnodes'
